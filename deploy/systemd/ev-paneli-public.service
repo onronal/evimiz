@@ -1,0 +1,17 @@
+[Unit]
+Description=Evimiz public loopback gateway
+After=ev-paneli.service
+Requires=ev-paneli.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ev-paneli
+Environment=PORT=4173
+Environment=PUBLIC_PROXY_PORT=4174
+ExecStart=/usr/bin/node public-proxy.mjs
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

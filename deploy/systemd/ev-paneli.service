@@ -1,0 +1,15 @@
+[Unit]
+Description=Evimiz home panel
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ev-paneli
+Environment=HOST=0.0.0.0
+Environment=PORT=4173
+ExecStart=/usr/bin/node server.mjs
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

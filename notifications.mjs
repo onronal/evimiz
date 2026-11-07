@@ -1,0 +1,13 @@
+import {notificationSettings} from './notification-settings.mjs';
+import {deviceCatalog} from './devices.mjs';
+import {alerts} from './model.mjs';
+import {internetQuality} from './activity.mjs';
+export function notificationFeed(state,internet,now=Date.now(),earthquakes={events:[]}){
+ const prefs=notificationSettings(state.settings);
+ const names={washer:'Çamaşır makinesi',dishwasher:'Bulaşık makinesi',vacuum:'Robot süpürge',fryer:'Airfryer',...Object.fromEntries((state.settings.devices||[]).map(d=>[d.id,d.name]))};
+ const notifications=state.events.slice(0,100).filter(e=>{const d=state.settings.devices?.find(d=>d.id===e.device);return d?.enabled&&deviceCatalog.find(s=>s.id===d.type)?.notificationKinds.includes(e.kind)&&prefs.devices[d.id]?.[e.kind]!==false;}).filter(e=>!(state.settings.vacationMode&&e.kind==='started'&&(e.deviceType||e.device)==='fryer')).map(e=>({id:e.eventId,at:e.at,category:'activity',url:(e.deviceType||e.device)==='fryer'?'/notifications':'/history',text:(names[e.device]||'Cihaz')+(e.kind==='started'?' çalıştırıldı.':e.estimated?' tahmini süreye göre tamamlandı.':' tamamlandı.')+(e.source==='vestel_recovered'?' Gerçek bitiş saati bilinmiyor.':'')}));
+ for(const a of alerts(state.settings,state.events,now)){const history=state.events.filter(e=>e.device===a.device),starts=history.filter(e=>e.kind==='started');const last=(starts.length?starts:history).sort((a,b)=>b.at.localeCompare(a.at))[0];notifications.unshift({id:'idle:'+a.device+':'+last?.at,category:'reminder',url:'/history',text:(names[a.device]||'Cihaz')+' '+a.days+' gündür çalıştırılmadı.'});}
+ for(const e of prefs.vacation?(state.vacationEvents||[]).filter(e=>state.settings.devices?.some(d=>d.id===e.device&&d.enabled)):[])notifications.unshift({id:e.id,at:e.at,category:'vacation',url:'/devices',text:e.text});
+ if(state.settings.earthquakes?.enabled)for(const e of earthquakes.events.filter(e=>e.notify&&Date.parse(e.at)>=Date.parse(state.settings.earthquakes.since)))notifications.unshift({id:e.id,at:e.observedAt,category:'earthquake',url:'/earthquakes',text:'AFAD: '+e.magnitudeType+' '+e.magnitude+' · '+e.location+' · Eve yaklaşık '+e.distanceKm+' km.'});
+ const quality=internetQuality(internet.history);if(prefs.internet&&quality.bad)notifications.unshift({id:'internet:'+internet.history[0]?.at,category:'internet',url:'/internet',text:quality.reason});return {notifications,quality};
+}

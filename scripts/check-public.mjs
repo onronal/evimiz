@@ -1,0 +1,6 @@
+import {execFileSync} from 'node:child_process';
+import {readFile} from 'node:fs/promises';
+let files;try{files=execFileSync('git',['ls-files','-z'],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).split('\0').filter(Boolean);}catch{console.error('Bu kontrol Git tarafından izlenen dosyaları inceler. Önce depoyu oluşturun; data/ klasörünü eklemeyin.');process.exit(2);}
+const forbidden=files.filter(f=>/(^|\/)(data|node_modules|\.venv|__pycache__)(\/|$)/.test(f)||/(^|\/)\.env($|\.)/.test(f)&&!f.endsWith('.env.example')||/\.(key|pem|p12|pfx|log)$/i.test(f));
+for(const f of files.filter(f=>!forbidden.includes(f))){const data=await readFile(f);if(data.length>2000000)continue;const text=data.toString();if(/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(text)||/AKIA[0-9A-Z]{16}/.test(text)||/eyJ[a-zA-Z0-9_-]{15,}\.[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/.test(text))forbidden.push(f);}
+if(forbidden.length){console.error('Özel dosya veya olası anahtar tespit edildi. İçerik yazdırılmadı:\n'+[...new Set(forbidden)].join('\n'));process.exitCode=1;}else console.log('İzlenen dosyalarda özel runtime klasörü veya bilinen anahtar biçimi bulunmadı. Bu kontrol manuel incelemenin yerini almaz.');

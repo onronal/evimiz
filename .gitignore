@@ -1,0 +1,17 @@
+# All private runtime state, credentials, maps and history
+data/
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+.venv/
+__pycache__/
+.DS_Store
+
+# Local publication drafts
+/docs/sharing/
+
+# Local Raspberry Pi setup and migration
+/docs/raspberry-pi.md
+/docs/raspberry-pi-roadmap.md

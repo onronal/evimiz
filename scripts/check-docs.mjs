@@ -1,0 +1,4 @@
+import {readdir,readFile,access} from 'node:fs/promises';
+import {dirname,resolve} from 'node:path';
+async function walk(dir){const files=[];for(const d of await readdir(dir,{withFileTypes:true})){const path=dir+'/'+d.name;if(d.isDirectory())files.push(...await walk(path));else if(d.name.endsWith('.md'))files.push(path);}return files;}
+const files=['README.md','README.en.md','AGENTS.md',...await walk('docs')];let broken=0;for(const file of files){const text=await readFile(file,'utf8');for(const m of text.matchAll(/\]\(([^)]+)\)/g)){let path=m[1].split('#')[0];if(!path||/^[a-z]+:/i.test(path))continue;try{await access(resolve(dirname(file),decodeURIComponent(path)));}catch{console.error(file+' → '+path);broken++;}}}if(broken)process.exitCode=1;else console.log('Yerel dokümantasyon bağlantıları geçerli.');

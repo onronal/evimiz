@@ -1,0 +1,3 @@
+export const cleaningTypes=new Set(['washer','dishwasher','vacuum']);
+export function observedActive(type,status){if(type==='light')return typeof status.dps?.['20']==='boolean'?status.dps['20']:null;if(type==='climate'||type==='tv')return status.power==='on'?true:status.power==='off'?false:null;if(typeof status.running==='boolean')return status.running;return null;}
+export function vacationTransition(previous,type,status,at){const active=observedActive(type,status);if(active===null)return {next:previous||null,alert:false};return {next:{active,at},alert:active&&previous?.active!==true,initial:!previous};}
