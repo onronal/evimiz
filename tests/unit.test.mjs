@@ -179,7 +179,7 @@ test('Robot oda seçimi başlangıç ve bitişe taşınır; dışarıdan başlan
  const d={id:'r',type:'vacuum'};
  const start=annotateActivity(state,d,{},[{kind:'started'}],'2026-01-01T00:01:00Z');assert.deepEqual(start[0].rooms,[{id:2,name:'Örnek oda'}]);
  assert.equal(annotateActivity(state,d,{},[{kind:'completed'}],'2026-01-01T00:02:00Z')[0].scope,'rooms');
- assert.equal(annotateActivity(state,d,{},[{kind:'started'}],'2026-01-01T00:03:00Z')[0].scope,undefined);
+ assert.equal(annotateActivity(state,d,{},[{kind:'started'}],'2026-01-01T00:03:00Z')[0].startOrigin,'unattributed');
 });
 test('Temizlik çalışması tek satır ve haftada bir aktivitedir; haftalar ev saat dilimindedir',()=>{
  const state={settings:{devices:[{id:'r',type:'vacuum',name:'Örnek robot'}]},events:[
@@ -384,4 +384,14 @@ test('Tapo yön kontrolü PTZ profilini seçer ve kısa hareketi durdurur',async
  rejectMove=true;
  await assert.rejects(move('camera',config,'left'),/Hareket komutu doğrulanamadı/);
  assert.deepEqual(calls,['GetCapabilities','GetProfiles','ContinuousMove','Stop']);
+});
+
+test('Robot hatası yinelenmez ve doğrulanmış iyileşmeden sonra tekrar bildirilir',()=>{
+ const step=(previous,current,at)=>activityTransition(previous,current,at,'vacuum');
+ const first=step(null,{fault:12},'a');
+ assert.equal(first.events[0].faultCode,12);
+ const unknown=step(first.next,{fault:null},'b');
+ assert.equal(step(unknown.next,{fault:12},'c').events.length,0);
+ const clear=step(unknown.next,{fault:0},'d');
+ assert.equal(step(clear.next,{fault:12},'e').events[0].kind,'fault');
 });

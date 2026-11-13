@@ -8,6 +8,7 @@ export function cleaningCycles(state,device='all'){
   if(e.kind==='started'||!row){row={id:e.eventId,device:e.device,type:e.deviceType||kinds.get(e.device)||e.device,name:names.get(e.device)||'Temizlik cihazı',at:e.at,startedAt:null,completedAt:null,manual:false,approximate:false,program:null,rooms:null,scope:null};rows.push(row);}
   if(e.kind==='started'){row.startedAt=e.at;open.set(e.device,row);}else {row.completedAt=e.at;row.estimated=!!e.estimated;open.delete(e.device);}
   row.manual||=e.source==='manual';row.approximate||=e.timeAccuracy==='unknown';row.program=e.program||row.program;
+  if(e.startOrigin)row.startOrigin=e.startOrigin;
   if(e.scope){row.scope=e.scope;row.rooms=(e.rooms||[]).map(r=>({id:r.id,name:r.name}));}
   row.kind=row.completedAt?'completed':'started';row.status=row.completedAt?(row.estimated?'estimated_completed':'completed'):'running';
  }

@@ -53,7 +53,7 @@ async function loadNotificationSettings(){
   const spec=deviceRegistry.catalog.find(s=>s.id===d.type);if(!spec?.notificationKinds.length&&!spec?.reminderSupported)continue;
   const box=node('div','','managed-device');box.dataset.notificationDevice=d.id;box.append(node('h3',d.name+(d.enabled?'':' · Devre dışı')));
   const pref=prefs.devices[d.id];
-  for(const [key,title] of [['started','Çalıştırıldı'],['completed','Tamamlandı'],['reminder','Kullanılmadığında hatırlat']]){
+  for(const [key,title] of [['started','Çalıştırıldı'],['completed','Tamamlandı'],['fault','Sıkışma ve robot hataları'],['reminder','Kullanılmadığında hatırlat']]){
    if(key==='reminder'?!spec.reminderSupported:!spec.notificationKinds.includes(key))continue;
    const label=node('label',title,'consent'),input=document.createElement('input');input.type='checkbox';input.dataset.notificationKey=key;input.checked=pref[key];label.prepend(input);box.append(label);
   }

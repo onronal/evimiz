@@ -13,8 +13,8 @@ export function annotateActivity(state,device,current,events,at){
   if(device.type==='vacuum'&&e.kind==='started'){
    const intent=state.vacuumIntents[device.id],age=Date.parse(at)-Date.parse(intent?.at);
    context=intent&&age>=0&&age<=300000?intent:null;
-   state.cleaningContexts[device.id]=context;delete state.vacuumIntents[device.id];
+   state.cleaningContexts[device.id]=context||{scope:'unknown',rooms:[]};context=state.cleaningContexts[device.id];delete state.vacuumIntents[device.id];
   }
-  return {...e,device:device.id,deviceType:device.type,program:current.program||null,...(timerCycleId?{timerCycleId}:{}),...(current.estimatedCompletion?{estimated:true,source:'estimated_timer'}:{}),...(device.type==='vacuum'&&context?{scope:context.scope,rooms:context.rooms}: {})};
+  return {...e,device:device.id,deviceType:device.type,program:current.program||null,...(timerCycleId?{timerCycleId}:{}),...(current.estimatedCompletion?{estimated:true,source:'estimated_timer'}:{}),...(device.type==='vacuum'&&context&&e.kind!=='fault'?{scope:context.scope,rooms:context.rooms,...(e.kind==='started'?{startOrigin:context.scope==='unknown'?'unattributed':'panel'}:{})}: {})};
  });
 }

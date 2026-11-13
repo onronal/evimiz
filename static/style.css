@@ -62,3 +62,12 @@ html,body{touch-action:pan-x pan-y}
 body:has(.device-fullscreen[open]){overflow:hidden}
 
 .room-results-scrolled{min-height:calc(100dvh + 2rem)}#device-room-filter{scroll-margin-top:8px}
+
+.account-menu{position:relative;margin-inline-start:auto;color:#344f3f}
+.account-menu>summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;min-height:40px;padding:0 14px;border:1px solid #dce5dc;border-radius:20px;background:#f7f9f5;font-weight:600;overflow-wrap:anywhere}
+.account-menu>summary::-webkit-details-marker{display:none}
+.account-menu>summary::after{content:"";width:6px;height:6px;border:solid currentColor;border-width:0 1px 1px 0;transform:rotate(45deg);margin-block-start:-3px}
+.account-menu[open]>summary::after{transform:rotate(225deg);margin-block-start:3px}
+.account-actions{position:absolute;inset-inline-end:0;top:calc(100% + 6px);z-index:5;min-width:168px;padding:5px;background:#fff;border:1px solid #dce5dc;border-radius:12px;box-shadow:0 8px 24px #283e3020}
+.account-actions>a,.account-actions>button{display:flex;align-items:center;width:100%;min-height:40px;padding:8px 10px;border:0;border-radius:7px;background:transparent;color:inherit;font:inherit;text-align:start;white-space:nowrap}
+.account-actions>a:hover,.account-actions>button:hover,.account-actions>a:focus-visible,.account-actions>button:focus-visible{background:#edf2ed}
