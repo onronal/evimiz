@@ -26,6 +26,7 @@ import {validateLayout} from './layout.mjs';
 import {readRooms,saveRooms} from './rooms.mjs';
 import {activityTransition,internetQuality} from './activity.mjs';
 import {readFile,mkdir,writeFile,rename,appendFile} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {defaults,alerts,validateEvent} from './model.mjs';
 import {searchLocations} from './environment.mjs';
@@ -36,6 +37,16 @@ import {connectSmartThings,selectClimate} from './smartthings.mjs';
 import {climateStatus,commandClimate} from './local-climate.mjs';
 import {xiaomiStatus,vacuumCommand} from './xiaomi.mjs';
 const root=fileURLToPath(new URL('.',import.meta.url));
+function installedVersion(){
+ const options={cwd:root,encoding:'utf8',timeout:2000,stdio:['ignore','pipe','ignore']};
+ try{
+  const tags=execFileSync('git',['tag','--points-at','HEAD','--sort=-version:refname'],options);
+  const release=tags.split('\n').map(tag=>tag.replace(/^evimiz-release\//,'')).find(tag=>/^v\d+\.\d+\.\d+$/.test(tag));
+  return release||execFileSync('git',['rev-parse','--short','HEAD'],options).trim();
+ }catch{return null;}
+}
+const version=installedVersion();
+
 await mkdir(root+'data',{recursive:true,mode:0o700});
 let publicOrigin=process.env.PUBLIC_ORIGIN;try{publicOrigin||=JSON.parse(await readFile(root+'data/public-access.json','utf8')).origin;}catch(e){if(e.code!=='ENOENT')throw e;}
 const push=createPushService({subject:publicOrigin||'https://evimiz.invalid/notifications'});
@@ -185,7 +196,7 @@ const server=http.createServer(async(req,res)=>{
   const instanceRoute=path.match(/^\/api\/devices\/([^/]+)\/(status|commands|connection|rooms|apps)$/);
   if(instanceRoute){if((req.method==='GET'&&!['status','rooms','apps'].includes(instanceRoute[2]))||(req.method==='POST'&&instanceRoute[2]==='status'))return json(res,405,{error:'Yöntem desteklenmiyor.'});const d=state.settings.devices.find(d=>d.id===instanceRoute[1]);if(!d)return json(res,404,{error:'Cihaz bulunamadı.'});if(instanceRoute[2]==='apps'){if(req.method!=='GET')return json(res,405,{error:'Yöntem desteklenmiyor.'});return json(res,200,await deviceApps(d));}if(d.type==='vacuum'&&req.method==='GET'&&instanceRoute[2]==='rooms')return json(res,200,await readRooms(d));if(d.type==='vacuum'&&req.method==='POST'&&instanceRoute[2]==='rooms')return json(res,200,await saveRooms((await body(req)).rooms,d));if(req.method==='GET'&&instanceRoute[2]==='status'){if(d.type==='camera'&&session.user.role!=='admin')return json(res,403,{error:'Kamera durumu yalnız yöneticiye açık.'});try{if(!d.enabled)throw Error('Cihaz devre dışı.');return json(res,200,d.type==='camera'?cameraService.status(d.id):await deviceStatus(d));}catch{return json(res,503,{error:'Cihaz durumu okunamadı. Bağlantı ve kurulum bilgilerini kontrol edin.'});}}if(req.method==='POST'){const input=await body(req);if(instanceRoute[2]==='connection')return json(res,200,await saveConnection(d,input));if(instanceRoute[2]==='commands'&&!d.enabled)return json(res,403,{error:'Cihaz devre disi. Once yonetimden etkinlestirin.'});if(instanceRoute[2]==='commands')return json(res,200,await instanceCommand(d,input));}}
   if(req.method==='GET'&&path==='/api/history')return json(res,200,cleaningHistory(state,{page:url.searchParams.get('page')||1,pageSize:20,device:url.searchParams.get('device')||'all',weekOffset:url.searchParams.get('weekOffset')||0}));
-  if(req.method==='GET'&&path==='/api/state'){if(url.searchParams.get('summary')==='1')return json(res,200,{settings:state.settings,alerts:alerts(state.settings,state.events),eventCount:state.events.length,cleaningCount:cleaningHistory(state).total});return json(res,200,{...state,alerts:alerts(state.settings,state.events)});}
+  if(req.method==='GET'&&path==='/api/state'){if(url.searchParams.get('summary')==='1')return json(res,200,{version,settings:state.settings,alerts:alerts(state.settings,state.events),eventCount:state.events.length,cleaningCount:cleaningHistory(state).total});return json(res,200,{...state,alerts:alerts(state.settings,state.events)});}
   if(req.method==='POST'){
    const allowedOrigins=new Set([`http://${req.headers.host}`,...(publicOrigin?[publicOrigin]:[])]);
    if(req.headers.origin && !allowedOrigins.has(req.headers.origin))return json(res,403,{error:'Kaynak reddedildi'});
