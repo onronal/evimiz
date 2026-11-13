@@ -129,15 +129,16 @@ const server=http.createServer(async(req,res)=>{
    if(await auth.needsPasswordSetup()&&(!isLocal||!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(req.headers.origin)))return json(res,403,{error:'İlk parolayı bu bilgisayarda 127.0.0.1 adresinden değiştirin.'});
    try{const result=await auth.login(input,req.socket.remoteAddress);const secure=req.headers.origin?.startsWith('https:')?'; Secure':'';res.setHeader('Set-Cookie','ev_session='+result.token+'; HttpOnly; SameSite=Strict; Path=/'+(result.maxAge?'; Max-Age='+result.maxAge:'')+secure);return json(res,200,{user:result.user});}catch(e){return json(res,401,{error:e.message});}
   }
-  const pages=['/','/network','/devices','/history','/earthquakes','/internet','/notifications','/admin','/automations','/help','/lg-setup','/integration-setup','/vestel-setup','/smartthings-setup'];
+  const pages=['/','/account','/network','/devices','/history','/earthquakes','/internet','/notifications','/admin','/automations','/help','/lg-setup','/integration-setup','/vestel-setup','/smartthings-setup'];
   if((path.startsWith('/api/')||pages.includes(path))&&!session){if(path.startsWith('/api/'))return json(res,401,{error:'Giriş yapmanız gerekiyor.'});res.writeHead(302,{Location:'/login','Cache-Control':'no-store'});return res.end();}
   const adminPage=['/admin','/lg-setup','/integration-setup','/vestel-setup','/smartthings-setup'].includes(path);
   const memberPost=['/api/bulb','/api/climate','/api/xiaomi/vacuum','/api/events','/api/auth/logout','/api/auth/password','/api/push/subscribe','/api/push/unsubscribe','/api/push/test'].includes(path)||/^\/api\/devices\/[^/]+\/commands$/.test(path);
   const adminOnly=adminPage||path.startsWith('/api/lg/')||path.startsWith('/api/vestel/')||(path.startsWith('/api/users')||(path.startsWith('/api/automations')&&req.method!=='GET'))||(req.method==='POST'&&!memberPost);
-  if(session?.user.mustChangePassword&&!['/api/auth/password','/api/auth/logout'].includes(path)&&(pages.includes(path)||path.startsWith('/api/'))){if(path.startsWith('/api/'))return json(res,403,{error:'Önce başlangıç parolasını değiştirin.'});res.writeHead(302,{Location:'/login'});return res.end();}
+  if(session?.user.mustChangePassword&&!['/account','/api/auth/password','/api/auth/logout'].includes(path)&&(pages.includes(path)||path.startsWith('/api/'))){if(path.startsWith('/api/'))return json(res,403,{error:'Önce başlangıç parolasını değiştirin.'});res.writeHead(302,{Location:'/login'});return res.end();}
   if(session&&adminOnly&&!authorize(session.user.role,true))return json(res,403,{error:'Bu işlem için yönetici yetkisi gerekli.'});
   if(req.method==='POST'&&(!session||req.headers['x-csrf-token']!==session.csrf))return json(res,403,{error:'Oturum doğrulaması başarısız. Sayfayı yenileyin.'});
   if(req.method==='GET'&&path==='/api/device-events')return deviceStreams.open(req,res,session);
+  if(req.method==='GET'&&path==='/account'){res.writeHead(302,{Location:'/login?password=1','Cache-Control':'no-store'});return res.end();}
   if(req.method==='POST'&&path==='/api/auth/password')return json(res,200,{user:await auth.changePassword(session,await body(req))});
   if(req.method==='POST'&&path==='/api/auth/logout'){await auth.logout(session);res.setHeader('Set-Cookie','ev_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');return json(res,200,{ok:true});}
   if(req.method==='GET'&&path==='/api/network'){const data=await network.status(),names=await networkDeviceNames(state.settings.devices);return json(res,200,{...data,devices:data.devices.map(d=>({...d,name:names.get(d.ip)||d.hostname||null}))});}

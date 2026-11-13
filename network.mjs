@@ -16,8 +16,27 @@ async function resolveNeighborName(ip){
   return hostname?.length<=253&&/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/i.test(hostname)?hostname:null;
  }catch{return null;}
 }
-export function createNetworkService({file=new URL('./data/network.json',import.meta.url),neighbors=collectNeighbors,probe=ping,resolveName=resolveNeighborName}={}){let busy=null,last={at:null,devices:[],error:null};return {async status(){if(!last.at)try{last=JSON.parse(await readFile(file,'utf8'));}catch{}return {...last,running:!!busy,usage:{available:false,message:'Cihaz başına veri kullanımı için modem/yönlendirici trafik sayaçlarına erişim gerekir. Bu bağlantı henüz yok.'}};},scan(){if(busy)return busy;busy=(async()=>{try{const devices=(await neighbors()).map(x=>({...x,reachability:'unknown'}));let next=0;await Promise.all(Array.from({length:4},async()=>{while(next<Math.min(devices.length,64)){const i=next++;const device=devices[i];
- const [reachability,hostname]=await Promise.all([probe(device.ip),resolveName(device.ip)]);
+export function parseBonjourNames(stdout){
+ const names=new Map();
+ for(const line of stdout.split('\n')){
+  const [event,,protocol,,,,host,ip]=line.split(';');
+  if(event!=='='||protocol!=='IPv4'||!privateIPv4(ip))continue;
+  const hostname=host?.replace(/\.local\.?$/i,'');
+  if(hostname&&hostname!==host&&hostname.length<=63&&/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(hostname)&&!names.has(ip)){
+   names.set(ip,hostname);
+  }
+ }
+ return names;
+}
+async function browseBonjourNames(){
+ if(process.platform!=='linux')return new Map();
+ try{
+  const {stdout}=await run('avahi-browse',['-a','-r','-t','-p','-k'],{timeout:5000,maxBuffer:256000});
+  return parseBonjourNames(stdout);
+ }catch(error){return parseBonjourNames(error.stdout||'');}
+}
+export function createNetworkService({file=new URL('./data/network.json',import.meta.url),neighbors=collectNeighbors,probe=ping,resolveName=resolveNeighborName,browseNames=browseBonjourNames}={}){let busy=null,last={at:null,devices:[],error:null};return {async status(){if(!last.at)try{last=JSON.parse(await readFile(file,'utf8'));}catch{}return {...last,running:!!busy,usage:{available:false,message:'Cihaz başına veri kullanımı için modem/yönlendirici trafik sayaçlarına erişim gerekir. Bu bağlantı henüz yok.'}};},scan(){if(busy)return busy;busy=(async()=>{try{const [rows,bonjour]=await Promise.all([neighbors(),browseNames()]);const devices=rows.map(x=>({...x,reachability:'unknown',...(bonjour.has(x.ip)?{hostname:bonjour.get(x.ip)}:{})}));let next=0;await Promise.all(Array.from({length:4},async()=>{while(next<Math.min(devices.length,64)){const i=next++;const device=devices[i];
+ const [reachability,hostname]=await Promise.all([probe(device.ip),device.hostname||resolveName(device.ip)]);
  device.reachability=reachability;
  if(hostname)device.hostname=hostname;}}));last={at:new Date().toISOString(),devices,error:null};const tmp=new URL(file.href+'.tmp');await writeFile(tmp,JSON.stringify(last),{mode:0o600});await rename(tmp,file);return last;}catch{last={...last,error:'Ağ kaydı okunamadı. macOS için arp, Raspberry Pi/Linux için iproute2 ve ping araçlarını kontrol edin.'};return last;}})().finally(()=>busy=null);return busy;}};}
 export async function networkDeviceNames(devices){const names=new Map();let xiaomi;for(const d of devices){try{let c;if(!d.legacy)c=JSON.parse(await readFile(new URL('./data/device-connections/'+d.id+'.json',import.meta.url),'utf8'));else if(d.type==='light')c=JSON.parse(await readFile(new URL('./data/bulb.json',import.meta.url),'utf8'));else if(d.type==='climate')c=JSON.parse(await readFile(new URL('./data/samsung-local/connection.json',import.meta.url),'utf8'));else if(['vacuum','fryer'].includes(d.type)){xiaomi||=JSON.parse(await readFile(new URL('./data/xiaomi/mi-tokens.json',import.meta.url),'utf8'));c=xiaomi.find(x=>x.model===(d.type==='vacuum'?'dreame.vacuum.p2140p':'careli.fryer.maf02'));}const ip=c?.ip||c?.localip;if(privateIPv4(ip))names.set(ip,d.name);}catch{}}return names;}
