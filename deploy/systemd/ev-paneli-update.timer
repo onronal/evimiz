@@ -1,0 +1,10 @@
+[Unit]
+Description=Check daily for an Evimiz release
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
