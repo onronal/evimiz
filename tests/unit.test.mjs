@@ -395,3 +395,27 @@ test('Robot hatası yinelenmez ve doğrulanmış iyileşmeden sonra tekrar bildi
  const clear=step(unknown.next,{fault:0},'d');
  assert.equal(step(clear.next,{fault:12},'e').events[0].kind,'fault');
 });
+
+test('Tek tetikleyici ışık ve priz işlemlerini sırayla saklar',()=>{
+ const devices=[{id:'lamp',type:'light',enabled:true},{id:'plug',type:'plug',enabled:true}];
+ const actions=[{deviceId:'lamp',command:{power:true}},{deviceId:'plug',command:{power:false}}];
+ const input={name:'Akşam',enabled:true,trigger:{type:'dusk'},actions};
+ assert.deepEqual(validateAutomation(input,devices).actions,actions);
+ assert.throws(()=>validateAutomation({...input,actions:[]},devices));
+});
+
+test('Tuya kimliği yeniden doğrulanınca aynı IP üzerindeki yeni MAC öğrenilir',async()=>{
+ const dir=await mkdtemp(tmpdir()+'/ev-tuya-address-');
+ try{
+  const ip='192.168.1.20',file=pathToFileURL(dir+'/pins.json');
+  let mac='aa:bb:cc:dd:ee:01',reads=0,now=0;
+  const service=createLocalAddressService({file,neighbors:async()=>[{ip,mac}],now:()=>now});
+  const options={id:'fixture',config:{ip},vendorIdentity:true,read:async()=>++reads,discover:async()=>[{ip}],persist:async()=>assert.fail('IP değişmedi')};
+  await service.read(options);
+  mac='aa:bb:cc:dd:ee:02';now=5001;
+  await service.read(options);
+  await service.read(options);
+  assert.equal(JSON.parse(await readFile(file,'utf8')).fixture,mac);
+  assert.equal(reads,3);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});

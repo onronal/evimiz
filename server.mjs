@@ -1,3 +1,4 @@
+import {schedulePowerRecovery} from './power-recovery.mjs';
 import {createCameraPtz} from './camera-ptz.mjs';
 import http from 'node:http';
 import {createShutdown} from './shutdown.mjs';
@@ -17,7 +18,7 @@ import {cleaningIntent,annotateActivity} from './cleaning-context.mjs';
 import {cleaningTypes,vacationTransition} from './vacation.mjs';
 import {createPushService} from './push.mjs';
 import {notificationFeed} from './notifications.mjs';
-import {validateAutomation,evaluateAutomation} from './automations.mjs';
+import {validateAutomation,evaluateAutomation,automationActions} from './automations.mjs';
 import {hasConnection,saveConnection,readConnection,deviceStatus,deviceCommand,deviceApps} from './device-engine.mjs';
 import {createAuth,authorize} from './auth.mjs';
 const auth=createAuth(undefined,{bootstrap:true});
@@ -108,8 +109,51 @@ async function legacyVacuum(input){const result=await vacuumCommand(input.comman
 async function settleTimers(){if(shuttingDown)return;try{const snapshot=await vestelSummary();const mapping=[];for(const d of state.settings.devices.filter(d=>d.enabled&&['washer','dishwasher'].includes(d.type))){let physical=d.legacy?snapshot.devices.find(x=>x.kind===d.type):null;if(!d.legacy){try{const c=await readConnection(d);physical=snapshot.devices.find(x=>x.id===c?.deviceId);}catch{continue;}}if(physical)mapping.push([d,physical]);}const op=queue.then(async()=>{state.activityTracking||={};let changed=false;for(const [d,current]of mapping){annotateActivity(state,d,current,[],snapshot.at);if(!current.estimatedCompletion||!current.remainingTimer?.cycleId)continue;const cycleId=current.remainingTimer.cycleId;if(state.events.some(e=>e.device===d.id&&e.kind==='completed'&&e.timerCycleId===cycleId))continue;const at=new Date(Date.parse(current.remainingTimer.anchorAt)+current.remainingTimer.anchorMinutes*60000).toISOString();state.events.unshift(...annotateActivity(state,d,current,[{kind:'completed',at,observedAt:new Date().toISOString(),eventId:'timer:'+d.id+':'+cycleId}],at));state.activityTracking[d.id]={...state.activityTracking[d.id],running:false,completed:true,cycleOpen:false,timerCycleId:cycleId};changed=true;}if(changed)await save();});queue=op.catch(()=>{});await op;}catch{}}
 setInterval(settleTimers,15000).unref();
 async function automationCommand(device,input){if(!device.legacy)return instanceCommand(device,input);if(device.type==='light')return bulbOperation({'20':input.power});if(device.type==='climate')return commandClimate(input);if(device.type==='vacuum')return legacyVacuum(input);throw Error('Cihaz komutu desteklenmiyor.');}
+let powerRecoveryPending=false;
+
+async function recoverPower(){
+ if(shuttingDown)throw Error('Evimiz kapanıyor.');
+ const flags=await configuredDevices();
+ let failures=0;
+ for(const device of state.settings.devices){
+  if(shuttingDown)throw Error('Evimiz kapanıyor.');
+  if(!device.enabled||device.adapter!=='tuya-local'||!['light','plug'].includes(device.type)||!await hasConnection(device,flags))continue;
+  try{
+   const status=await deviceStatus(device);
+   const power=device.type==='plug'?status.power:status.dps?.['20'];
+   if(power===false)continue;
+   if(power!==true)throw Error('Güç durumu doğrulanamadı.');
+   if(shuttingDown||!state.settings.devices.some(d=>d.id===device.id&&d.enabled))continue;
+   const result=device.legacy?await bulbOperation({'20':false},undefined,device.id,'20'):device.type==='light'?await bulbOperation({'20':false},await readConnection(device),device.id,'20'):await automationCommand(device,{power:false});
+   if(device.type==='light'&&result.dps?.['20']!==false)throw Error('Kapalı durumu doğrulanamadı.');
+  }catch{failures++;}
+ }
+ if(failures)console.warn('Elektrik dönüşü: '+failures+' Tuya cihazının kapalı olduğu doğrulanamadı.');
+ powerRecoveryPending=false;
+}
+try{
+ powerRecoveryPending=!!await schedulePowerRecovery({
+  file:new URL('./data/power-recovery-boot',import.meta.url),
+  recover:recoverPower,
+  onError:()=>{powerRecoveryPending=false;console.warn('Elektrik dönüşü işlemi tamamlanamadı.');}
+ });
+}catch{console.warn('Sistem açılışı doğrulanamadı.');}
 let automationBusy=false;
-async function pollAutomations(){if(shuttingDown)return;if(automationBusy||state.settings.vacationMode||!state.automations.some(r=>r.enabled))return;automationBusy=true;try{const context=await automationContext();for(const candidate of [...state.automations]){let run=null;const operation=queue.then(async()=>{const rule=state.automations.find(r=>r.id===candidate.id);if(!rule?.enabled||state.settings.vacationMode)return;const previous=state.automationTracking[rule.id]||{},result=evaluateAutomation(rule,{...context,resumeAfter:state.settings.automationsResumeAfter},previous);const resumeAfter=state.settings.automationsResumeAfter;const rebaseline=rule.trigger.type==='temperature'&&resumeAfter&&previous.resumeAfter!==resumeAfter;state.automationTracking[rule.id]={...previous,matched:result.matched,resumeAfter};if(result.due&&!rebaseline){const device=state.settings.devices.find(d=>d.id===rule.action.deviceId&&d.enabled);state.automationTracking[rule.id]={matched:result.matched,resumeAfter,key:result.key,attemptAt:new Date().toISOString()};run={rule:structuredClone(rule),device};}await save();});queue=operation.catch(()=>{});await operation;if(run&&!shuttingDown&&!state.settings.vacationMode&&state.settings.devices.some(d=>d.id===run.device?.id&&d.enabled)&&state.automations.some(r=>r.id===run.rule.id&&r.enabled)){let success=false;try{if(!run.device)throw Error();await automationCommand(run.device,run.rule.action.command);success=true;}catch{}const update=queue.then(async()=>{state.automationLog.unshift({id:run.rule.id,name:run.rule.name,at:new Date().toISOString(),success,message:success?'Komut gönderildi; cihaz durumunu kontrol edin.':'Komut tamamlanamadı; cihaz bağlantısını kontrol edin.'});state.automationLog=state.automationLog.slice(0,100);await save();});queue=update.catch(()=>{});await update;}}}finally{automationBusy=false;}}
+async function pollAutomations(){if(shuttingDown)return;if(powerRecoveryPending||automationBusy||state.settings.vacationMode||!state.automations.some(r=>r.enabled))return;automationBusy=true;try{const context=await automationContext();for(const candidate of [...state.automations]){let run=null;const operation=queue.then(async()=>{const rule=state.automations.find(r=>r.id===candidate.id);if(!rule?.enabled||state.settings.vacationMode)return;const previous=state.automationTracking[rule.id]||{},result=evaluateAutomation(rule,{...context,resumeAfter:state.settings.automationsResumeAfter},previous);const resumeAfter=state.settings.automationsResumeAfter;const rebaseline=rule.trigger.type==='temperature'&&resumeAfter&&previous.resumeAfter!==resumeAfter;state.automationTracking[rule.id]={...previous,matched:result.matched,resumeAfter};if(result.due&&!rebaseline){state.automationTracking[rule.id]={matched:result.matched,resumeAfter,key:result.key,attemptAt:new Date().toISOString()};run=structuredClone(rule);}await save();});queue=operation.catch(()=>{});await operation;if(run){
+ const actions=automationActions(run);
+ let succeeded=0,attempted=0;
+ for(const action of actions){
+  if(shuttingDown||state.settings.vacationMode||!state.automations.some(rule=>rule.id===run.id&&rule.enabled))break;
+  attempted++;
+  const device=state.settings.devices.find(d=>d.id===action.deviceId&&d.enabled);
+  if(!device)continue;
+  try{await automationCommand(device,action.command);succeeded++;}catch{}
+ }
+ if(!attempted)continue;
+ const update=queue.then(async()=>{
+  state.automationLog.unshift({id:run.id,name:run.name,at:new Date().toISOString(),success:succeeded===actions.length,notify:true,message:`${succeeded}/${actions.length} işlem başarılı.`});
+  state.automationLog=state.automationLog.slice(0,100);await save();
+ });queue=update.catch(()=>{});await update;}}}finally{automationBusy=false;}}
 setTimeout(()=>pollAutomations().catch(()=>{}),5000).unref();setInterval(()=>pollAutomations().catch(()=>{}),30000).unref();
 function nearbyEarthquakes(){const config=state.settings.earthquakes,place=state.settings.place,snapshot=earthquakeStore.status();return {...snapshot,config,needsLocation:!place,events:place?snapshot.events.map(e=>({...e,distanceKm:distanceKm(place,e)})).filter(e=>e.magnitude>config.minMagnitude&&e.distanceKm<=config.radiusKm).map(e=>({...e,distanceKm:Math.round(e.distanceKm*10)/10})):[]};}
 function buildNotificationFeed(){return notificationFeed(state,internetState(),Date.now(),nearbyEarthquakes());}
@@ -190,7 +234,7 @@ const server=http.createServer(async(req,res)=>{
   }
   if(req.method==='GET'&&path==='/api/help'){const guides={tuya:'integrations/tuya.md',vestel:'integrations/vestel.md',samsung:'integrations/samsung.md',xiaomi:'integrations/xiaomi.md',lg:'integrations/lg.md',tapo:'integrations/tapo.md',raspberry:'raspberry-pi.md',notifications:'notifications.md',access:'external-access-options.md'};const key=url.searchParams.get('guide');const name=Object.hasOwn(guides,key)?guides[key]:null;if(!name)return json(res,404,{error:'Rehber bulunamadı.'});return json(res,200,{text:await readFile(root+'docs/'+name,'utf8')});}
   if(req.method==='GET'&&path==='/api/devices/archived'){if(session.user.role!=='admin')return json(res,403,{error:'Yönetici yetkisi gerekli.'});return json(res,200,{devices:(state.archivedDevices||[]).map(e=>({id:e.device.id,name:e.device.name,archivedAt:e.archivedAt}))});}
-  if(req.method==='GET'&&path==='/api/devices'){const configured=await configuredDevices();const devices=await Promise.all(state.settings.devices.map(async d=>({...d,configured:await hasConnection(d,configured),automationCount:state.automations.filter(r=>r.action.deviceId===d.id).length})));return json(res,200,{catalog:deviceCatalog,devices});}
+  if(req.method==='GET'&&path==='/api/devices'){const configured=await configuredDevices();const devices=await Promise.all(state.settings.devices.map(async d=>({...d,configured:await hasConnection(d,configured),automationCount:state.automations.filter(r=>automationActions(r).some(action=>action.deviceId===d.id)).length})));return json(res,200,{catalog:deviceCatalog,devices});}
   if(req.method==='POST'&&path==='/api/cameras/discover')return json(res,200,{devices:await discoverCameras()});
   const cameraRoute=path.match(/^\/api\/devices\/([^/]+)\/camera-stream$/);if(cameraRoute&&req.method==='GET'){if(session.user.role!=='admin')return json(res,403,{error:'Kamera görüntüsü yalnız yöneticiye açık.'});const d=state.settings.devices.find(d=>d.id===cameraRoute[1]&&d.adapter==='tapo-rtsp'&&d.enabled);if(!d)return json(res,404,{error:'Etkin kamera bulunamadı.'});cameraService.open(d,await readConnection(d),req,res,session);return;}
   const instanceRoute=path.match(/^\/api\/devices\/([^/]+)\/(status|commands|connection|rooms|apps)$/);
