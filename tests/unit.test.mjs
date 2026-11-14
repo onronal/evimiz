@@ -419,3 +419,26 @@ test('Tuya kimliği yeniden doğrulanınca aynı IP üzerindeki yeni MAC öğren
   assert.equal(reads,3);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+import {deflateSync} from 'node:zlib';
+import {buildZoneAction,mapGeometry,zoneCoordinates} from '../vacuum-zone.mjs';
+
+test('Robot alanı yalnız eşleşen haritada robot koordinatlarına çevrilir',()=>{
+ const map={mapId:7,width:8,height:6,runs:[[2,2,4,1]]};
+ const raw=Buffer.alloc(27+map.width*map.height);
+ for(const [offset,value] of [[0,7],[17,50],[19,8],[21,6],[23,-1000],[25,2000]])
+  raw.writeInt16LE(value,offset);
+ raw.fill(1,27+2*8+2,27+2*8+6);
+ const encoded=deflateSync(raw).toString('base64url');
+ const geometry=mapGeometry(map,encoded);
+ assert.ok(geometry);
+ assert.equal(mapGeometry({...map,runs:[[2,2,4,2]]},encoded),null);
+ const selection=[6,5,2,1];
+ const coordinates=zoneCoordinates(map,geometry,selection,geometry.revision);
+ assert.deepEqual(coordinates,[-900,2050,-700,2250]);
+ assert.throws(()=>zoneCoordinates(map,geometry,selection,'old'));
+ assert.throws(()=>zoneCoordinates(map,geometry,[0,3,3,6],geometry.revision));
+ assert.throws(()=>zoneCoordinates(map,geometry,[1,1,3,3],geometry.revision));
+ const action=buildZoneAction({did:'fixture'},coordinates,{suction:2,water:1});
+ assert.deepEqual(action.in,[{piid:1,value:19},{piid:10,value:'{"areas":[[-900,2050,-700,2250,1,2,1]]}'}]);
+});

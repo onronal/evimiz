@@ -1,7 +1,7 @@
 // Requested rooms describe the accepted command, not proof of room coverage.
 export function cleaningIntent(input,map,at=new Date().toISOString()){
- if(!['rooms','start'].includes(input.command))return null;
- return {at,scope:input.command==='rooms'?'rooms':'all',rooms:input.command==='rooms'?(input.rooms||[]).map(id=>({id,name:map.rooms.find(r=>r.id===id)?.name||'Oda '+id})):[]};
+ if(!['rooms','start','zone'].includes(input.command))return null;
+ return {at,scope:input.command==='rooms'?'rooms':input.command==='zone'?'zone':'all',rooms:input.command==='rooms'?(input.rooms||[]).map(id=>({id,name:map.rooms.find(r=>r.id===id)?.name||'Oda '+id})):[]};
 }
 export function annotateActivity(state,device,current,events,at){
  state.cleaningContexts||={};state.vacuumIntents||={};

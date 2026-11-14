@@ -1,3 +1,24 @@
+const adminGroups=[...document.querySelectorAll('[data-admin-group]')];
+const sectionLinks=document.querySelectorAll('.admin-page nav a[href^="#"]');
+
+function showAdminGroup(navigate=false){
+ const target=document.getElementById(location.hash.slice(1));
+ const activeGroup=target?.closest('[data-admin-group]')??adminGroups[0];
+
+ for(const group of adminGroups)group.hidden=group!==activeGroup;
+ for(const link of sectionLinks){
+  if(link.hash==='#'+activeGroup.id)link.setAttribute('aria-current','location');
+  else link.removeAttribute('aria-current');
+ }
+
+ if(navigate)activeGroup.focus({preventScroll:true});
+ if(target?.closest('[data-admin-group]'))target.scrollIntoView({block:'start'});
+ else if(navigate)window.scrollTo(0,0);
+}
+
+window.addEventListener('hashchange',()=>showAdminGroup(true));
+showAdminGroup();
+
 const $=s=>document.querySelector(s);let currentSettings,layout;
 const names={vacuum:'Robot süpürge',light:'Yatak odası ışığı',climate:'Samsung klima',washer:'Çamaşır makinesi',dishwasher:'Bulaşık makinesi',fryer:'Airfryer'};
 async function api(path,data){const r=await fetch(path,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});const v=await r.json();if(!r.ok)throw Error(v.error||'İşlem tamamlanamadı');return v;}

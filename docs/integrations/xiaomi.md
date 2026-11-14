@@ -43,3 +43,9 @@ Bu gövde sentetik testle doğrulanır; fiziksel oda temizliği ayrıca ev sahib
 Aynı yerel IP'ye giden miIO istekleri sunucuda sıraya alınır. `get_properties` zaman aşımı bir kez yeniden denenir; eylem/temizlik komutu otomatik tekrarlanmaz. UDP sorgu çakışması ve aralıklı erişim sorunları komut biçiminden ayrı değerlendirilmelidir. Son teşhiste robot şarjda/hatasız okunmuş; arka plan sorgularından ayrı emiş/su okuması başarılı olmuştur. Fiziksel oda hareketi kabul yanıtından çıkarılamaz.
 
 Son düzeltmeler sonrasında kullanıcı, oda seçimiyle robotun çalışmaya başladığını doğruladı. Doğru fiziksel odaya varış ayrıca gözlemlenmelidir. Bu sonuç, aralıklı erişimin uyku modundan kaynaklandığını tek başına kanıtlamaz; ayrı bir uyandırma eylemi eklenmemiştir.
+
+## Dikdörtgen alan temizliği
+
+İlk `dreame.vacuum.p2140p` robot kaydında, **Cihazlar → Robot → Oda ve alan seçimi** altında haritada dikdörtgen çizilebilir. `data/xiaomi/map-full-meta.json` dosyasındaki `rism` haritası, `data/xiaomi/rooms.json` içindeki harita kimliği, boyutlar ve oda pikselleriyle eşleştiğinde alan seçimi açılır. Pi'de dosyalar eksikse aynı robottan alınan eşleşen dosyaları özel veri aktarımıyla kopyalayın. Bu dosyaları Git'e eklemeyin.
+
+Evimiz mevcut emiş ve su ayarlarıyla tek geçiş alan komutu gönderir. Komut biçimi [Dreame entegrasyonundaki alan temizleme uygulamasına](https://github.com/Tasshack/dreame-vacuum/blob/master/custom_components/dreame_vacuum/dreame/device.py#L4708) dayanır. Alan komutunun fiziksel sonucu modelde henüz doğrulanmadı.
