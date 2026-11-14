@@ -20,7 +20,13 @@ export function validateConnection(d,input){
  if(d.adapter==='lg-webos')return validateLGConnection(input);
  if(d.adapter==='tuya-local'){
   if(!privateIP(input.ip)||typeof input.deviceId!=='string'||!/^[a-zA-Z0-9]{8,64}$/.test(input.deviceId)||typeof input.localKey!=='string'||Buffer.byteLength(input.localKey)!==16||!['3.3','3.4','3.5'].includes(input.version))throw Error('Tuya için özel ağ IPv4 adresi, cihaz kimliği, 16 bayt local key ve sürüm gerekli.');
-  return {ip:input.ip,id:input.deviceId,key:input.localKey,version:input.version};
+  const config={ip:input.ip,id:input.deviceId,key:input.localKey,version:input.version};
+  if(d.type==='plug'){
+   const powerDp=String(input.powerDp??'');
+   if(!/^[1-9]\d{0,2}$/.test(powerDp)||Number(powerDp)>255)throw Error('Prizin aç/kapat DP numarası 1–255 olmalı.');
+   config.powerDp=powerDp;
+  }
+  return config;
  }
  if(d.adapter==='xiaomi-local'){
   const models={vacuum:'dreame.vacuum.p2140p',fryer:'careli.fryer.maf02'};if(!privateIP(input.ip)||typeof input.token!=='string'||!/^[a-fA-F0-9]{32}$/.test(input.token)||!/^\d{1,20}$/.test(String(input.did))||input.model!==models[d.type])throw Error('Desteklenen model, özel ağ IPv4, sayısal DID ve 32 haneli token gerekli.');
@@ -37,8 +43,19 @@ export const adapters=new Map([
  ['tapo-rtsp',{status:async()=>({kind:'camera',state:'İsteğe bağlı görüntü · bağlantı henüz doğrulanmadı',connected:false,readOnly:true})}],
  ['lg-webos',{apps:(d,c)=>lgService.apps(d,c),status:(d,c)=>localAddresses.read({id:d.id,config:c,read:next=>lgService.status(d,next),discover:async()=>{await discoverLG({duration:2000});return collectNeighbors();},persist:next=>persistLocalAddress(d,c,next)}),command:(d,c,input)=>lgService.command(d,c,input)}],
  ['tuya-local',{
-  status:async(d,c)=>{const result=await bulbOperation(undefined,c,d.id);return {connected:true,at:new Date().toISOString(),kind:d.type,dps:result.dps};},
-  command:async(d,c,input)=>{const data={};if(typeof input.power==='boolean')data['20']=input.power;if(input.brightness!==undefined){if(!Number.isInteger(input.brightness)||input.brightness<1||input.brightness>100)throw Error('Parlaklık 1–100 olmalı.');data['21']='white';data['22']=input.brightness*10;}if(input.temperature!==undefined){if(!Number.isInteger(input.temperature)||input.temperature<0||input.temperature>100)throw Error('Renk 0–100 olmalı.');data['21']='white';data['23']=input.temperature*10;}if(!Object.keys(data).length||Object.keys(input).some(k=>!['power','brightness','temperature'].includes(k)))throw Error('Geçersiz ampul komutu.');return {accepted:true,...await bulbOperation(data,c,d.id)};}
+  status:async(d,c)=>{const result=await bulbOperation(undefined,c,d.id);if(d.type==='plug'){
+   const power=result.dps?.[c.powerDp];
+   return {connected:true,at:new Date().toISOString(),kind:d.type,power:typeof power==='boolean'?power:null};
+  }
+  return {connected:true,at:new Date().toISOString(),kind:d.type,dps:result.dps};},
+  command:async(d,c,input)=>{
+   if(d.type==='plug'){
+    if(typeof input.power!=='boolean'||Object.keys(input).length!==1)throw Error('Priz için aç veya kapat seçin.');
+    const result=await bulbOperation({[c.powerDp]:input.power},c,d.id,c.powerDp);
+    if(result.dps?.[c.powerDp]!==input.power)throw Error('Prizin yeni güç durumu doğrulanamadı.');
+    return {accepted:true,confirmed:true,power:input.power};
+   }
+   const data={};if(typeof input.power==='boolean')data['20']=input.power;if(input.brightness!==undefined){if(!Number.isInteger(input.brightness)||input.brightness<1||input.brightness>100)throw Error('Parlaklık 1–100 olmalı.');data['21']='white';data['22']=input.brightness*10;}if(input.temperature!==undefined){if(!Number.isInteger(input.temperature)||input.temperature<0||input.temperature>100)throw Error('Renk 0–100 olmalı.');data['21']='white';data['23']=input.temperature*10;}if(!Object.keys(data).length||Object.keys(input).some(k=>!['power','brightness','temperature'].includes(k)))throw Error('Geçersiz ampul komutu.');return {accepted:true,...await bulbOperation(data,c,d.id)};}
  }],
  ['xiaomi-local',{status:(d,c)=>xiaomiStatus(d.type,c,d.id),command:(d,c,input)=>{if(d.type!=='vacuum')throw Error('Airfryer salt okunur.');if(!['start','pause','dock','rooms'].includes(input.command))throw Error('Bu robotta yalnız temel temizlik komutları destekleniyor.');return vacuumCommand(input.command,input.rooms,c,d.id,input.mapId);}}],
  ['samsung-local',{status:(d,c)=>climateStatus(c,d.id),command:(d,c,input)=>commandClimate(input,c,d.id)}],

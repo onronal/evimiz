@@ -48,6 +48,7 @@ To access the dashboard from another device on your home network, start it with 
 | Integration and model | Capabilities and requirements |
 |---|---|
 | **Tuya / Smart Life** — ACK Smart LED 10 W | Power, brightness, warm and cool white. Requires the local key, device ID, IP, and compatible data points. [Guide](docs/integrations/tuya.md) |
+| **Cata / Tuya smart plug** | Experimental local on/off | Requires a separate device ID, key, IP and verified switch DP for each plug. Physical testing is pending. |
 | **Samsung WindFree** — AR70F18C1DB/SK | Power, mode, setpoint, and measured temperature. Local Python adapter with model and firmware constraints. [Guide](docs/integrations/samsung.md) |
 | **Vestel / Akıllı Yaşam** — KCMI 98142 WIFI, BM8302 X WIFI | Read-only cloud access for program, remaining time, and activity. Requires your account and an authorized service client. [Guide](docs/integrations/vestel.md) |
 | **Xiaomi robot vacuum** — `dreame.vacuum.p2140p` | Start, pause, dock, battery, cleaning counter, and room selection. Requires the device ID, token, and its own map. A room command started cleaning on the tested device. Completion by individual room has yet to be verified. [Guide](docs/integrations/xiaomi.md) |

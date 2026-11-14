@@ -70,6 +70,7 @@ Aşağıdaki kapsam model/protokol düzeyindedir. Aynı markanın farklı ürün
 | Entegrasyon / mevcut model | Kontrol ve okuma | Kurulum / sınır |
 |---|---|---|
 | **Tuya / Smart Life** — ACK Smart LED 10 W | Aç/kapat, parlaklık, sarı/beyaz | Yerel anahtar, cihaz kimliği, IP ve uyumlu DP eşlemesi. [Rehber](docs/integrations/tuya.md) |
+| **Cata / Tuya akıllı priz** | Deneysel yerel aç/kapat | Her priz için ayrı kimlik, anahtar, IP ve doğrulanmış aç/kapat DP numarası gerekir. Fiziksel test bekliyor. |
 | **Samsung** — AR70F18C1DB/SK WindFree | Güç, mod, hedef ve ölçülen sıcaklık | Modele/firmware'e bağlı yerel Python adaptörü. SmartThings'in tüm cihazları değildir. [Rehber](docs/integrations/samsung.md) |
 | **Vestel / Akıllı Yaşam** — KCMI 98142 WIFI, BM8302 X WIFI | Program, kalan süre ve aktivite takibi | **Salt okunur bulut bağlantısı.** Kendi hesabınız ve yetkili servis istemcisi bilgileri gerekir; herkese açık hazır OAuth sihirbazı yoktur. [Rehber](docs/integrations/vestel.md) |
 | **Xiaomi robot** — `dreame.vacuum.p2140p` | Başlat/duraklat/şarja dön, pil, sayaç, oda seçimi | Kendi DID/token ve robota ait harita gerekir. Mevcut cihazda oda komutunun temizliği başlattığı gözlendi; tek tek odaların tamamlanması doğrulanmaz. Yeni harita edinimi tam otomatik değildir. [Rehber](docs/integrations/xiaomi.md) |

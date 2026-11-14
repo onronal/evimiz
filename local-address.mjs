@@ -18,7 +18,7 @@ export function createLocalAddressService({file=new URL('./data/address-identiti
  let pins={},loaded=false,loading,writes=Promise.resolve(),neighborAt=-Infinity,neighborRows=[],neighborWork;const attempts=new Map(),pending=new Map();
  async function load(){if(loaded)return;if(!loading)loading=(async()=>{try{pins=JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}loaded=true;})().finally(()=>loading=null);await loading;}
  async function rows(force=false){if(!force&&now()-neighborAt<5000)return neighborRows;if(!neighborWork)neighborWork=neighbors().then(value=>{neighborRows=value;neighborAt=now();return value;}).catch(()=>[]).finally(()=>neighborWork=null);return neighborWork;}
- async function learn(id,mac){if(!validMac(mac)||pins[id])return;pins[id]=mac.toLowerCase();const op=writes.catch(()=>{}).then(async()=>{await mkdir(new URL('.',file),{recursive:true,mode:0o700});const tmp=new URL(file.href+'.tmp');await writeFile(tmp,JSON.stringify(pins),{mode:0o600});await rename(tmp,file);});writes=op;await op;}
+ async function learn(id,mac,replace=false){if(!validMac(mac)||pins[id]&&!replace)return;pins[id]=mac.toLowerCase();const op=writes.catch(()=>{}).then(async()=>{await mkdir(new URL('.',file),{recursive:true,mode:0o700});const tmp=new URL(file.href+'.tmp');await writeFile(tmp,JSON.stringify(pins),{mode:0o600});await rename(tmp,file);});writes=op;await op;}
  async function perform({id,config,read,discover,persist,vendorIdentity=false}){
   await load();const known=validMac(config.mac)?config.mac.toLowerCase():pins[id];let list=await rows();
   const currentMac=list.find(r=>r.ip===config.ip)?.mac?.toLowerCase();
@@ -27,12 +27,12 @@ export function createLocalAddressService({file=new URL('./data/address-identiti
    let candidates;
    if(discover){candidates=await discover(config);list=await rows(true);}
    else {if(!known)throw original;await refresh(config.ip);list=await rows(true);candidates=list.filter(r=>r.mac.toLowerCase()===known).map(r=>({ip:r.ip}));}
-   candidates=candidates.filter(c=>privateIPv4(c.ip)&&c.ip!==config.ip&&(!known||list.some(r=>r.ip===c.ip&&r.mac.toLowerCase()===known)));
+   candidates=candidates.filter(c=>privateIPv4(c.ip)&&(vendorIdentity||c.ip!==config.ip)&&(!known||vendorIdentity||list.some(r=>r.ip===c.ip&&r.mac.toLowerCase()===known)));
    candidates=[...new Map(candidates.map(c=>[c.ip,c])).values()];if(candidates.length!==1)throw original;
    // MAC-based discovery must have a learned identity. Vendor discovery supplies its own device ID validation.
    if(!known&&!discover)throw original;
-   const candidate={...config,ip:candidates[0].ip};const value=await read(candidate);await persist(candidate);
-   await learn(id,list.find(r=>r.ip===candidate.ip)?.mac);return value;
+   const candidate={...config,ip:candidates[0].ip};const value=await read(candidate);if(candidate.ip!==config.ip)await persist(candidate);
+   await learn(id,list.find(r=>r.ip===candidate.ip)?.mac,vendorIdentity);return value;
   }
  }
  return {async forget(id){await load();delete pins[id];const op=writes.catch(()=>{}).then(async()=>{await mkdir(new URL('.',file),{recursive:true,mode:0o700});const tmp=new URL(file.href+'.tmp');await writeFile(tmp,JSON.stringify(pins),{mode:0o600});await rename(tmp,file);});writes=op;await op;},read(options){if(pending.has(options.id))return pending.get(options.id);const job=perform(options).finally(()=>pending.delete(options.id));pending.set(options.id,job);return job;}};
