@@ -1,9 +1,10 @@
+import {buildZoneAction,zoneCoordinates} from './vacuum-zone.mjs';
 import {deviceStatuses} from './device-status.mjs';
 import {createAddressRecovery,persistXiaomiAddress} from './xiaomi-discovery.mjs';
 const recoverAddress=createAddressRecovery();
 import {buildRoomAction} from './vacuum-room-command.mjs';
 import {readFile} from 'node:fs/promises';
-import {readRooms,validateRoomSelection} from './rooms.mjs';
+import {readRooms,readZoneGeometry,validateRoomSelection} from './rooms.mjs';
 import {miioRequest} from './miio-local.mjs';
 const dir=new URL('./data/xiaomi/',import.meta.url),cache=new Map(),pending=new Map();
 const models={vacuum:'dreame.vacuum.p2140p',fryer:'careli.fryer.maf02'};
@@ -18,17 +19,25 @@ async function readStatus(kind,override){
  return {connected:true,kind,name:device.name,model:device.model,source:'local',at:new Date().toISOString(),state:statuses[kind][status]||'Bilinmeyen durum',fault:value(2,2),...(kind==='vacuum'?{battery:value(3,1),charging:value(3,2)===1,totalCycles:value(12,3),roomsReady:true,running:[1,7].includes(status),completed:false,resetCycle:[2,5,6].includes(status),hasFault:status===4}:{targetTime:value(2,3),targetTemperature:value(2,4),remainingTime:value(2,5),running:[4,5].includes(status),completed:status===6,resetCycle:[0,1].includes(status),readOnly:true})};
 }
 export async function xiaomiStatus(kind,override,instance=kind){if(!models[kind])throw Error('Geçersiz Xiaomi türü');const cached=cache.get(instance);if(cached&&Date.now()-cached.at<15000)return cached.value;if(pending.has(instance))return pending.get(instance);const work=readStatus(kind,override).catch(async error=>{if(error.code!=='MIIO_TIMEOUT')throw error;const device=override||await deviceFor(kind);return recoverAddress(device,candidate=>readStatus(kind,candidate),candidate=>persistXiaomiAddress(device,candidate,instance,!override));}).then(value=>{cache.set(instance,{at:Date.now(),value});return value;}).finally(()=>pending.delete(instance));pending.set(instance,work);return work;}
-async function rawVacuumCommand(command,rooms,override,instance='vacuum',expectedMapId){
- const actions={start:[2,1],pause:[2,2],dock:[3,1],rooms:[4,1]};if(!actions[command])throw Error('Geçersiz robot komutu');const device=override||await deviceFor('vacuum');const [siid,aiid]=actions[command];
- let payload={did:device.did,siid,aiid,in:[]};if(command==='rooms'){
+async function rawVacuumCommand(command,rooms,override,instance='vacuum',expectedMapId,zone){
+ const actions={start:[2,1],pause:[2,2],dock:[3,1],rooms:[4,1],zone:[4,1]};if(!actions[command])throw Error('Geçersiz robot komutu');const device=override||await deviceFor('vacuum');const [siid,aiid]=actions[command];
+ let payload={did:device.did,siid,aiid,in:[]};if(command==='rooms'||command==='zone'){
  const known=await readRooms(override?{id:instance,type:'vacuum',legacy:false}:undefined);
- // Validate identity before even querying the robot's current settings.
- validateRoomSelection(known,rooms,expectedMapId);if(expectedMapId===undefined||known.mapId===undefined)throw Error('Robot oda listesini yenileyip tekrar seçin.');
+ let coordinates;
+ if(command==='zone'){
+  if(override||device.model!==models.vacuum)throw Error('Bu robot için alan temizliği kurulmamış.');
+  if(expectedMapId!==known.mapId)throw Error('Robot haritası değişmiş; alanı tekrar seçin.');
+  coordinates=zoneCoordinates(known,await readZoneGeometry(known),zone?.selection,zone?.revision);
+ }else{
+  validateRoomSelection(known,rooms,expectedMapId);
+  if(expectedMapId===undefined||known.mapId===undefined)throw Error('Robot oda listesini yenileyip tekrar seçin.');
+ }
  const settings=await miioRequest(device,'get_properties',[4,5].map(piid=>({did:device.did,siid:4,piid})));
  const value=piid=>settings?.find(p=>p.siid===4&&p.piid===piid&&p.code===0)?.value;
- payload=buildRoomAction(device,known,rooms,expectedMapId,{suction:value(4),water:value(5)});
+ const cleaningSettings={suction:value(4),water:value(5)};
+ payload=command==='zone'?buildZoneAction(device,coordinates,cleaningSettings):buildRoomAction(device,known,rooms,expectedMapId,cleaningSettings);
  }const result=await miioRequest(device,'action',payload);cache.delete(instance);
- if(result?.code!==0)throw Error('Robot komutu kabul etmedi'+(Number.isInteger(result?.code)?' (kod '+result.code+')':'')+'.');return {accepted:true,confirmed:false,message:command==='rooms'?'Robot oda komutunu kabul etti. Temizliğin başladığı henüz doğrulanmadı; robot durumunu kontrol edin.':'Robot komutu aldı. Durum birazdan güncellenecek.'};
+ if(result?.code!==0)throw Error('Robot komutu kabul etmedi'+(Number.isInteger(result?.code)?' (kod '+result.code+')':'')+'.');return {accepted:true,confirmed:false,message:command==='zone'?'Robot alan komutunu kabul etti. Temizliğin başladığını robot durumundan kontrol edin.':command==='rooms'?'Robot oda komutunu kabul etti. Temizliğin başladığı henüz doğrulanmadı; robot durumunu kontrol edin.':'Robot komutu aldı. Durum birazdan güncellenecek.'};
 }
 
-export async function vacuumCommand(command,rooms,override,instance='vacuum',expectedMapId){deviceStatuses.invalidate(instance);try{return await rawVacuumCommand(command,rooms,override,instance,expectedMapId);}finally{deviceStatuses.invalidate(instance);}}
+export async function vacuumCommand(command,rooms,override,instance='vacuum',expectedMapId,zone){deviceStatuses.invalidate(instance);try{return await rawVacuumCommand(command,rooms,override,instance,expectedMapId,zone);}finally{deviceStatuses.invalidate(instance);}}

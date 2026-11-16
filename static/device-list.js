@@ -44,11 +44,30 @@ function addFullScreen(card,name){
 function instanceCard(d,spec){const card=document.createElement('article');card.dataset.deviceId=d.id;card.append(make('h3',d.name));const badge=make('span',layout.rooms.find(r=>r.id===layout.assignments[d.id])?.name||'Oda atanmamış');badge.className='room-badge';card.append(badge);const status=make('p',d.configured?'Durum okunuyor…':'Bağlantı kurulumu bekleniyor.');card.append(status);if(!d.configured){card.append(make('p',spec.instructions));const a=make('a','Bağlantıyı yönet');a.href='/admin#device-management';a.className='button';a.dataset.adminOnly='';card.append(a);return card;}
  if(d.type==='tv'||d.type==='camera')addFullScreen(card,d.name);
  const timerEl=['washer','dishwasher','fryer'].includes(d.type)?make('div',''):null;if(timerEl)card.append(timerEl);
- const controls=[];let last,reading=false,commandBusy=false;const updateTime=d.type==='tv'?make('small','TV değişiklikleri canlı iletilir.'):null;if(updateTime){updateTime.dataset.tvUpdate='';card.append(updateTime);}
+ const controls=[];let last,reading=false,commandBusy=false,confirmedPowerRevision=0;const updateTime=d.type==='tv'?make('small','TV değişiklikleri canlı iletilir.'):null;if(updateTime){updateTime.dataset.tvUpdate='';card.append(updateTime);}
  const addButton=(text,fn)=>{const b=make('button',text);b.disabled=true;b.addEventListener('click',()=>command(fn()));controls.push(b);card.append(b);return b;};
  function tvVisibility(){if(d.type!=='tv')return;const on=last?.power==='on';for(const el of card.querySelectorAll('[data-tv-online]')){el.hidden=!on;if(!on&&el.tagName==='DETAILS')el.open=false;}for(const el of card.querySelectorAll('[data-tv-wake]'))el.hidden=on;const external=last?.soundOutput&&last.soundOutput!=='tv_speaker';for(const el of card.querySelectorAll('[data-tv-absolute-volume]'))el.hidden=!on||!!external;const out=card.querySelector('[data-tv-audio-note]');if(out)out.textContent=external?'Harici ses çıkışı · Ses + / Ses − TV üzerinden iletilir; soundbar desteğine bağlıdır.':'Ses çıkışı: '+(last?.soundOutput==='tv_speaker'?'TV hoparlörü':'Henüz doğrulanamadı');}
- async function read(){if(reading)return;reading=true;try{last=await request(d,'status');if(d.type==='light')status.textContent=last.dps?.['20']?'Açık':'Kapalı';else if(d.type==='plug')status.textContent=last.power===true?'Açık':last.power===false?'Kapalı':'Güç durumu bilinmiyor';else if(d.type==='tv')status.textContent=(last.state||'Güç durumu bilinmiyor')+' · Ses '+(last.volume??'—')+(last.muted===true?' · Sessiz':'');else if(d.type==='climate')status.textContent=(last.power==='on'?'Açık':'Kapalı')+' · '+(last.temperature??'—')+'°C';else status.textContent=(last.state||'Durum alındı')+(timerEl?'':last.remainingTime!=null?' · Kalan '+last.remainingTime+' dk':last.remainingMinutes!=null?' · Kalan '+last.remainingMinutes+' dk':'');if(timerEl)renderRemaining(timerEl,last.remainingMinutes??last.remainingTime,{active:last.running,completed:last.completed,timer:last.remainingTimer});if(updateTime&&last?.at)updateTime.textContent='Son okuma: '+new Date(last.at).toLocaleTimeString('tr-TR')+' · Paylaşılan durum';if(!commandBusy)controls.forEach(b=>b.disabled=b.hasAttribute('data-requires-apps')&&!b.dataset.appsReady);tvVisibility();}catch(e){if(d.type==='tv')last=null;tvVisibility();status.textContent=e.message;if(timerEl)renderRemaining(timerEl,null,{stale:true});if(!commandBusy)controls.forEach(b=>b.disabled=!b.hasAttribute('data-wake'));}finally{reading=false;}}
- async function command(input){if(commandBusy)return;commandBusy=true;controls.forEach(b=>b.disabled=true);let error;try{await request(d,'commands',input);}catch(e){error=e.message;}finally{commandBusy=false;await read();if(error)status.textContent=error;}}
+ async function read(){if(reading)return;reading=true;const revision=confirmedPowerRevision;try{const snapshot=await request(d,'status');if(revision!==confirmedPowerRevision)return;last=snapshot;if(d.type==='light')status.textContent=last.dps?.['20']?'Açık':'Kapalı';else if(d.type==='plug')status.textContent=last.power===true?'Açık':last.power===false?'Kapalı':'Güç durumu bilinmiyor';else if(d.type==='tv')status.textContent=(last.state||'Güç durumu bilinmiyor')+' · Ses '+(last.volume??'—')+(last.muted===true?' · Sessiz':'');else if(d.type==='climate')status.textContent=(last.power==='on'?'Açık':'Kapalı')+' · '+(last.temperature??'—')+'°C';else status.textContent=(last.state||'Durum alındı')+(timerEl?'':last.remainingTime!=null?' · Kalan '+last.remainingTime+' dk':last.remainingMinutes!=null?' · Kalan '+last.remainingMinutes+' dk':'');if(timerEl)renderRemaining(timerEl,last.remainingMinutes??last.remainingTime,{active:last.running,completed:last.completed,timer:last.remainingTimer});if(updateTime&&last?.at)updateTime.textContent='Son okuma: '+new Date(last.at).toLocaleTimeString('tr-TR')+' · Paylaşılan durum';if(!commandBusy)controls.forEach(b=>b.disabled=b.hasAttribute('data-requires-apps')&&!b.dataset.appsReady);tvVisibility();}catch(e){if(revision!==confirmedPowerRevision)return;if(d.type==='tv')last=null;tvVisibility();status.textContent=e.message;if(timerEl)renderRemaining(timerEl,null,{stale:true});if(!commandBusy)controls.forEach(b=>b.disabled=!b.hasAttribute('data-wake'));}finally{reading=false;}}
+ async function command(input){
+  if(commandBusy)return;
+  commandBusy=true;
+  controls.forEach(button=>button.disabled=true);
+  let error,confirmedPower;
+  try{
+   const result=await request(d,'commands',input);
+   if(d.type==='plug'&&result.confirmed===true&&typeof result.power==='boolean')confirmedPower=result.power;
+  }catch(e){error=e.message;}
+  finally{commandBusy=false;}
+  if(confirmedPower!==undefined){
+   confirmedPowerRevision++;
+   last={...last,power:confirmedPower};
+   status.textContent=confirmedPower?'Açık':'Kapalı';
+   controls.forEach(button=>button.disabled=false);
+   return;
+  }
+  await read();
+  if(error)status.textContent=error;
+ }
 
  if(d.type==='camera'){const start=make('button','Canlı görüntüyü aç'),stop=make('button','Görüntüyü kapat'),view=document.createElement('img'),note=make('p','Yalnız görüntü açılınca kameraya bağlanılır. Ses ve kayıt yok.');const directions=make('div',''),directionStatus=make('p','');
  directions.hidden=true;

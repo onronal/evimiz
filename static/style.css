@@ -73,3 +73,31 @@ body:has(.device-fullscreen[open]){overflow:hidden}
 .account-actions>a:hover,.account-actions>button:hover,.account-actions>a:focus-visible,.account-actions>button:focus-visible{background:#edf2ed}
 
 .dashboard-footer{margin-block-start:24px;padding-block-start:12px;border-top:1px solid #dce5dc;color:#5c7163;font-size:12px;text-align:end}
+
+#automation-steps{display:grid;gap:14px;min-width:0}
+.automation-step{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0;scroll-margin-block:16px}
+.automation-step>legend{padding-inline:6px;font-weight:600}
+.automation-step>[data-robot-room-options],.automation-step>[data-climate-options],.automation-step>[data-remove-step]{grid-column:1/-1}
+.automation-step [data-climate-options]:not([hidden]){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.automation-step [data-automation-rooms]{display:grid;gap:8px}
+.automation-step [data-remove-step]{justify-self:end;min-height:44px;background:#f7efeb;color:#854536}
+#automation-add-step{justify-self:start;min-height:44px}
+
+.admin-page>aside{overflow-y:auto}
+.admin-page>aside nav{gap:4px}
+.admin-page>aside nav a{padding-block:10px}
+.admin-page nav a[aria-current=location]{background:#dfe7db;color:#294d3b;font-weight:600}
+.admin-page [data-admin-group],.admin-page [data-admin-group]>section{scroll-margin-top:20px}
+@media(max-width:650px){
+ .automation-step,.automation-step [data-climate-options]:not([hidden]){grid-template-columns:minmax(0,1fr)}
+ .admin-page>aside{position:sticky;top:0;z-index:5;padding-block:8px}
+ .admin-page>aside .brand{font-size:24px}
+ .admin-page>aside nav{margin-top:4px}
+ .admin-page>aside nav a{padding:10px;font-size:12px}
+ .admin-page [data-admin-group],.admin-page [data-admin-group]>section{scroll-margin-top:108px}
+}
+
+#zone-controls{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 18px}
+#zone-controls button{width:auto;margin:0;min-height:44px}
+#room-map svg.selecting-zone{touch-action:none;cursor:crosshair;user-select:none}
+.zone-selection{fill:#285b5433;stroke:#285b54;stroke-width:2px;vector-effect:non-scaling-stroke;pointer-events:none}

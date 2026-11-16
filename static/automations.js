@@ -5,6 +5,17 @@ function message(text){$('#message').textContent=text;setTimeout(()=>$('#message
 function setGroup(id,active){const group=$(id);group.hidden=!active;group.querySelectorAll('input,select').forEach(x=>x.disabled=!active);}
 function triggerFields(){setGroup('#clock-field',f.trigger.value==='time');setGroup('#sun-offset-field',['dawn','dusk'].includes(f.trigger.value));setGroup('#temperature-trigger',f.trigger.value==='temperature');}
 const steps=$('#automation-steps');
+const addStepButton=$('#automation-add-step');
+const submitButton=$('#automation-submit');
+let saving=false;
+function renumberSteps(){
+ for(const [index,row] of [...steps.children].entries()){
+  row.firstElementChild.textContent='İşlem '+(index+1);
+  const remove=row.querySelector('[data-remove-step]');
+  remove.hidden=steps.children.length===1;
+  remove.setAttribute('aria-label',(index+1)+'. işlemi kaldır');
+ }
+}
 function addStep(saved){
  if(steps.children.length>=10){message('En fazla 10 işlem eklenebilir.');return;}
  const row=$('#automation-step').content.firstElementChild.cloneNode(true);
@@ -48,9 +59,15 @@ function addStep(saved){
  device.addEventListener('change',populate);
  action.addEventListener('change',visibility);
  row.querySelector('[data-remove-step]').addEventListener('click',()=>{
-  if(steps.children.length>1)row.remove();
+  if(steps.children.length<=1)return;
+  const nextRow=row.nextElementSibling??row.previousElementSibling;
+  row.remove();
+  renumberSteps();
+  nextRow.querySelector('[name="deviceId"]').focus();
  });
  steps.append(row);
+ renumberSteps();
+ return row;
 }
 function readStep(row){
  const field=name=>row.querySelector('[name="'+name+'"]').value;
@@ -69,7 +86,12 @@ function readStep(row){
  return {deviceId,command};
 }
 f.trigger.addEventListener('change',triggerFields);
-$('#automation-add-step').addEventListener('click',()=>addStep());
+addStepButton.addEventListener('click',()=>{
+ const row=addStep();
+ if(!row)return;
+ row.querySelector('[name="deviceId"]').focus({preventScroll:true});
+ row.scrollIntoView({block:'nearest'});
+});
 function reset(){form.reset();f.id.value='';$('#automation-cancel').hidden=true;steps.replaceChildren();addStep();triggerFields();}
 $('#automation-cancel').addEventListener('click',reset);
 function edit(rule){
@@ -79,7 +101,7 @@ function edit(rule){
  steps.replaceChildren();for(const action of rule.actions??[rule.action])addStep(action);
  triggerFields();$('#automation-cancel').hidden=false;form.scrollIntoView({behavior:'smooth'});
 }
-async function load(){if(window.evUser?.role!=='admin')document.querySelector('.intro p').textContent='Kayıtlı otomasyonları ve çalışma sonuçlarını izle.';const [d,a]=await Promise.all([api('/api/devices'),api('/api/automations')]);devices=d.devices.filter(d=>d.enabled&&d.configured&&['light','plug','climate','vacuum'].includes(d.type));rules=a.rules;maps=Object.fromEntries(await Promise.all(devices.filter(d=>d.type==='vacuum').map(async d=>{try{return [d.id,await api('/api/devices/'+d.id+'/rooms')];}catch{return [d.id,{rooms:[]}];}})));$('#automation-submit').disabled=!devices.length;if(!steps.children.length)addStep();const list=$('#automation-list');list.replaceChildren();for(const r of rules){const card=document.createElement('article');card.append(node('h3',r.name+' · '+(r.enabled?'Etkin':'Kapalı')),node('p',({time:'Saat '+r.trigger.at,dawn:'Aydınlanma',dusk:'Kararma',temperature:'Sıcaklık eşiği'}[r.trigger.type])));
+async function load(){if(window.evUser?.role!=='admin')document.querySelector('.intro p').textContent='Kayıtlı otomasyonları ve çalışma sonuçlarını izle.';const [d,a]=await Promise.all([api('/api/devices'),api('/api/automations')]);devices=d.devices.filter(d=>d.enabled&&d.configured&&['light','plug','climate','vacuum'].includes(d.type));rules=a.rules;maps=Object.fromEntries(await Promise.all(devices.filter(d=>d.type==='vacuum').map(async d=>{try{return [d.id,await api('/api/devices/'+d.id+'/rooms')];}catch{return [d.id,{rooms:[]}];}})));submitButton.disabled=saving||!devices.length;if(!steps.children.length)addStep();const list=$('#automation-list');list.replaceChildren();for(const r of rules){const card=document.createElement('article');card.append(node('h3',r.name+' · '+(r.enabled?'Etkin':'Kapalı')),node('p',({time:'Saat '+r.trigger.at,dawn:'Aydınlanma',dusk:'Kararma',temperature:'Sıcaklık eşiği'}[r.trigger.type])));
  for(const action of r.actions??[r.action]){
   const target=d.devices.find(device=>device.id===action.deviceId);
   const command=action.command,map=maps[action.deviceId];
@@ -89,6 +111,9 @@ async function load(){if(window.evUser?.role!=='admin')document.querySelector('.
  const change=node('button','Düzenle');change.addEventListener('click',()=>edit(r));const toggle=node('button',r.enabled?'Durdur':'Etkinleştir');toggle.addEventListener('click',async()=>{try{await api('/api/automations/update',{...r,enabled:!r.enabled});await load();}catch(e){message(e.message);}});const remove=node('button','Sil');remove.addEventListener('click',async()=>{try{await api('/api/automations/delete',{id:r.id});await load();}catch(e){message(e.message);}});if(window.evUser?.role==='admin'){const actions=document.createElement('div');actions.className='automation-actions';actions.append(change,toggle,remove);card.append(actions);}list.append(card);}if(!rules.length)list.append(node('p','Henüz otomasyon yok.'));const log=$('#automation-log');log.replaceChildren();for(const x of a.log.slice(0,20))log.append(node('p',new Date(x.at).toLocaleString('tr-TR')+' · '+x.name+' · '+x.message));if(!a.log.length)log.append(node('p','Henüz çalıştırma yok.'));}
 form.addEventListener('submit',async event=>{
  event.preventDefault();
+ if(saving)return;
+ saving=true;
+ submitButton.disabled=true;
  try{
   const trigger={type:f.trigger.value};
   if(trigger.type==='time')trigger.at=f.at.value;
@@ -96,7 +121,21 @@ form.addEventListener('submit',async event=>{
   if(trigger.type==='temperature')Object.assign(trigger,{source:f.source.value,operator:f.operator.value,value:Number(f.value.value)});
   const input={id:f.id.value,name:f.name.value,enabled:f.enabled.checked,trigger,actions:[...steps.children].map(readStep)};
   await api(f.id.value?'/api/automations/update':'/api/automations',input);
-  steps.replaceChildren();form.reset();f.id.value='';$('#automation-cancel').hidden=true;triggerFields();await load();message('Otomasyon kaydedildi.');
- }catch(error){message(error.message);}
+ }catch(error){
+  message(error.message);
+  return;
+ }finally{
+  saving=false;
+  submitButton.disabled=!devices.length;
+ }
+
+ reset();
+ try{
+  await load();
+  $('#automation-list').closest('section').scrollIntoView({block:'start'});
+  message('Otomasyon kaydedildi.');
+ }catch{
+  message('Otomasyon kaydedildi. Listeyi güncellemek için sayfayı yenileyin.');
+ }
 });
 triggerFields();load().catch(error=>message(error.message));
